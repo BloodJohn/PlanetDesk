@@ -2,7 +2,8 @@
 
 public class PlanetController : MonoBehaviour
 {
-    public PlanetData data;
+    private PlanetData data;
+    [SerializeField] private TextMesh costLabel;
 
     public void Init(PlanetData newData, Vector2Int shift)
     {
@@ -11,6 +12,7 @@ public class PlanetController : MonoBehaviour
 
         transform.localPosition = new Vector3(data.pos.x - shift.x, data.pos.y - shift.y, 0);
         name = string.Format("planet {0},{1}", data.pos.x, data.pos.y);
+        costLabel.text = string.Format("{0}", data.cost);
     }
 }
 
