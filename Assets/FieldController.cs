@@ -1,18 +1,25 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using Random = UnityEngine.Random;
+
+//q - умельшаем видимость
+//e - увеличиваем видимость
+
 
 //Требования к проекту:
 
 //Обратите внимание на производительность, старайтесь минимизировать лаги.Реализуйте с расчетом на то, что проект может работать и на мобильных платформах.
-// - какие лаги при 20 объектах?
+// - самые здоровенные лаги сейчас на переборе клетор гиганской доски, остальное вроде оптимизировал
 
 //Стремитесь, чтобы архитектура и проект были расширяемыми для возможных дальнейших изменений. Подготовьте проект к тому, что в дальнейшем карта будет загружаться с сервера.
 // - cellList - вполне сериализуем в json
 
 //Приветствуется краткое описание того, что и как было сделано плюс что можно было бы улучшить в будущем при развитии проекта и на что, возможно, 
 //не хватило времени (макс примерно 1-2 страницы).
-// - заняло пару часов
+// - надо подумать, как прореживать список клеток на большом охвате (открывать доску кусками, а не поклеточно)
+// - масштабирать подписи к планетам
 
 //Арт необязателен, но приветствуется.
 // - не буду =)
@@ -27,19 +34,25 @@ public class FieldController : MonoBehaviour
 
     [SerializeField] private PlanetController planetPrefab;
     [SerializeField] private Camera mainCamera;
+    [SerializeField] private TextMesh costLabel;
 
     private readonly List<PlanetController> viewList = new List<PlanetController>(topCount);
     private readonly List<PlanetController> delList = new List<PlanetController>(topCount);
     private readonly List<PlanetData> cellList = new List<PlanetData>();
     /// <summary>не совсем честно, но зато работает быстрее - сортировать меньше!</summary>
-    private readonly Dictionary<int, int> minCostByWidth = new Dictionary<int, int>();
+    private readonly Dictionary<int, int> maxDiffByWidth = new Dictionary<int, int>();
 
     private int fieldWidth = 7;
     private Vector2Int fieldPos = Vector2Int.zero;
+    private int shipCost = 5000;
 
 
     private void Start()
     {
+        Random.InitState(DateTime.Now.Millisecond);
+        shipCost = Random.Range(0, maxCost+1);
+        costLabel.text = string.Format("{0}", shipCost);
+
         fieldPos = new Vector2Int(0, 0);
 
         UpdatePlanetField();
@@ -80,7 +93,7 @@ public class FieldController : MonoBehaviour
     }
 
     /// <summary>возвращает все клетки в зоне видимости</summary>
-    private IEnumerable<PlanetData> UpdateCellField(int minCost)
+    private IEnumerable<PlanetData> UpdateCellField(int maxDiff)
     {
         for (int x = -fieldWidth / 2; x <= fieldWidth / 2; x++)
             for (int y = -fieldWidth / 2; y < fieldWidth / 2; y++)
@@ -96,11 +109,12 @@ public class FieldController : MonoBehaviour
                         pos = newPos
                     };
                     //Ячейка заполняется либо ничем, либо планетой (планеты должны заполнять не менее 30% ячеек)
-                    if (Random.value <= 0.3f) newData.cost = Random.Range(0, maxCost);
+                    if (Random.value <= 0.3f) newData.cost = Random.Range(0, maxCost+1);
                     cellList.Add(newData);
                 }
 
-                if (newData.cost >= minCost ) yield return newData;
+                //отображается только P = 20 планет с самым близким к кораблю рейтингом в видимой области
+                if (newData.cost>=0 && Mathf.Abs(shipCost-newData.cost) <= maxDiff ) yield return newData;
             }
     }
 
@@ -118,21 +132,22 @@ public class FieldController : MonoBehaviour
 
         }
 
-        var minCost = 0;
-        minCostByWidth.TryGetValue(fieldWidth, out minCost);
-        var cellList = UpdateCellField(minCost);
+        var maxDiff = maxCost;
+        if (!maxDiffByWidth.TryGetValue(fieldWidth, out maxDiff)) maxDiff = maxCost;
+
+        var localCellList = UpdateCellField(maxDiff);
         //Начиная с N = 10 включается особый режим отображения объектов, при котором отображается только P = 20 планет с самым близким к кораблю рейтингом в видимой области
         if (fieldWidth > 10)
         {
-            cellList = cellList
-            .OrderByDescending(t => t.cost)
+            localCellList = localCellList
+            .OrderBy(t => Mathf.Abs(shipCost - t.cost))
             .Take(topCount);
         }
 
-        var newMinCost = maxCost;
+        var newMinCost = 0;
 
         //создаем планеты
-        foreach (var cellData in cellList)
+        foreach (var cellData in localCellList)
         {
 
             PlanetController newPlanet;
@@ -150,10 +165,10 @@ public class FieldController : MonoBehaviour
 
             viewList.Add(newPlanet);
 
-            if (cellData.cost < newMinCost) newMinCost = cellData.cost;
+            if (Mathf.Abs(shipCost - cellData.cost) > newMinCost) newMinCost = Mathf.Abs(shipCost - cellData.cost);
         }
 
-        if (!minCostByWidth.ContainsKey(fieldWidth))
-            minCostByWidth.Add(fieldWidth, newMinCost);
+        if (!maxDiffByWidth.ContainsKey(fieldWidth))
+            maxDiffByWidth.Add(fieldWidth, newMinCost);
     }
 }
